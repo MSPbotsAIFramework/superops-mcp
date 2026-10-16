@@ -1,0 +1,9 @@
+SuperOps.ai MCP Server
+Copyright 2026 MSPbots.ai
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+"SuperOps" and "SuperOps.ai" are trademarks of their respective owner. This
+project is an independent integration that calls the documented SuperOps.ai
+GraphQL API; it contains no SuperOps source code and is not affiliated with or
+endorsed by SuperOps.
