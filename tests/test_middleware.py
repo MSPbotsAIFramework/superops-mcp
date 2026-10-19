@@ -48,9 +48,9 @@ def test_health_is_local():
     [
         ({}, "X-SuperOps-API-Token"),
         ({"X-SuperOps-API-Token": "t"}, "X-SuperOps-Subdomain"),
-        ({"X-SuperOps-Subdomain": "acme"}, "X-SuperOps-API-Token"),
-        ({"X-SuperOps-API-Token": "Bearer ", "X-SuperOps-Subdomain": "acme"}, "X-SuperOps-API-Token"),
-        ({"X-SuperOps-API-Token": "${SUPEROPS_TOKEN}", "X-SuperOps-Subdomain": "acme"}, "X-SuperOps-API-Token"),
+        ({"X-SuperOps-Subdomain": "example"}, "X-SuperOps-API-Token"),
+        ({"X-SuperOps-API-Token": "Bearer ", "X-SuperOps-Subdomain": "example"}, "X-SuperOps-API-Token"),
+        ({"X-SuperOps-API-Token": "${SUPEROPS_TOKEN}", "X-SuperOps-Subdomain": "example"}, "X-SuperOps-API-Token"),
     ],
 )
 def test_missing_credentials_return_401(headers, missing):
@@ -112,16 +112,16 @@ def _run_middleware(headers: list[tuple[bytes, bytes]]) -> dict:
 
 def test_headers_reach_request_context_and_are_reset():
     seen = _run_middleware(
-        [(b"x-superops-api-token", b"Bearer token-123"), (b"x-superops-subdomain", b" Acme "), (b"x-superops-region", b"EU")]
+        [(b"x-superops-api-token", b"Bearer token-123"), (b"x-superops-subdomain", b" Example "), (b"x-superops-region", b"EU")]
     )
     creds = seen["credentials"]
-    assert (creds.api_token, creds.subdomain, creds.region) == ("token-123", "acme", "eu")
+    assert (creds.api_token, creds.subdomain, creds.region) == ("token-123", "example", "eu")
     assert seen["client"].endpoint == "https://euapi.superops.ai/msp"
     assert _credentials_var.get() is None
 
 
 def test_region_defaults_to_us():
-    seen = _run_middleware([(b"x-superops-api-token", b"t"), (b"x-superops-subdomain", b"acme")])
+    seen = _run_middleware([(b"x-superops-api-token", b"t"), (b"x-superops-subdomain", b"example")])
     assert seen["client"].endpoint == "https://api.superops.ai/msp"
 
 
@@ -154,5 +154,5 @@ def test_concurrent_requests_do_not_share_credentials():
 
 
 def test_credentials_repr_hides_token():
-    seen = _run_middleware([(b"x-superops-api-token", b"very-secret-token"), (b"x-superops-subdomain", b"acme")])
+    seen = _run_middleware([(b"x-superops-api-token", b"very-secret-token"), (b"x-superops-subdomain", b"example")])
     assert "very-secret-token" not in repr(seen["credentials"])

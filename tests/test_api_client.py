@@ -22,7 +22,7 @@ from superops_mcp import api_client
 from superops_mcp.api_client import SuperOpsClient, SuperOpsCredentials, SuperOpsError
 from superops_mcp.server import _credentials_var, create_mcp_server
 
-CREDS = SuperOpsCredentials(api_token="token-123", subdomain="acme")
+CREDS = SuperOpsCredentials(api_token="token-123", subdomain="example")
 
 
 @pytest.fixture(autouse=True)
@@ -76,7 +76,7 @@ async def test_headers_and_endpoint():
     request = rec.requests[0]
     assert str(request.url) == "https://api.superops.ai/msp"
     assert request.headers["Authorization"] == "Bearer token-123"
-    assert request.headers["CustomerSubDomain"] == "acme"
+    assert request.headers["CustomerSubDomain"] == "example"
 
 
 async def test_graphql_errors_with_http_200_raise():
@@ -120,7 +120,7 @@ async def test_http_401_is_unauthorized(monkeypatch):
 async def test_test_connection(monkeypatch):
     rec = Recorder({"getClientList": {"getClientList": {"listInfo": {"totalCount": 42}}}})
     result = await _call(monkeypatch, rec, "superops_test_connection", {})
-    assert result == {"connected": True, "subdomain": "acme", "region": "us", "client_count": 42}
+    assert result == {"connected": True, "subdomain": "example", "region": "us", "client_count": 42}
 
 
 # ---- clients ---------------------------------------------------------------
