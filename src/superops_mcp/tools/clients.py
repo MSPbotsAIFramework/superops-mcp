@@ -19,7 +19,21 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
 from ..api_client import SuperOpsClient
-from ._common import READ_ONLY, TENANT_VALUES, ClientFactory, Page, PageSize, clause, join, list_input, run_tool, text
+from ._common import (
+    READ_ONLY,
+    TENANT_VALUES,
+    ClientFactory,
+    Cursor,
+    Max,
+    Page,
+    PageSize,
+    clause,
+    join,
+    list_input,
+    paging,
+    run_tool,
+    text,
+)
 
 CLIENT_LIST = """
 query listClients($input: ListInfoInput!) {
@@ -59,10 +73,13 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         stage: Annotated[str | None, Field(description=f"Stage: Active, Inactive or Prospect. {TENANT_VALUES}")] = None,
         page: Page = None,
         pageSize: PageSize = None,
+        max: Max = None,
+        cursor: Cursor = None,
     ) -> str:
         """List client accounts by name, optionally by stage and status, with contacts and HQ site."""
 
         async def action(client: SuperOpsClient) -> Any:
+            page_no, page_size = paging(page, pageSize, cursor, max)
             condition = join(
                 "AND",
                 [
@@ -70,7 +87,7 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
                     clause("status", "includes", [text(status)]) if text(status) else None,
                 ],
             )
-            data = await client.query(CLIENT_LIST, {"input": list_input(page, pageSize, condition, BY_NAME)})
+            data = await client.query(CLIENT_LIST, {"input": list_input(page_no, page_size, condition, BY_NAME)})
             return data.get("getClientList")
 
         return await run_tool("superops_clients_list", client_factory, action)
@@ -90,6 +107,7 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         query: Annotated[str, Field(description="Text in the client name or any of its email domains.", min_length=1)],
         page: Page = None,
         pageSize: PageSize = None,
+        max: Max = None,
     ) -> str:
         """Search client accounts by part of their name or email domain."""
 
@@ -97,7 +115,8 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
             term = text(query)
             if not term:
                 raise ValueError("query must not be blank.")
-            data = await client.query(CLIENT_LIST, {"input": list_input(page, pageSize, name_or_domain(term), BY_NAME)})
+            page_no, page_size = paging(page, pageSize, None, max)
+            data = await client.query(CLIENT_LIST, {"input": list_input(page_no, page_size, name_or_domain(term), BY_NAME)})
             return data.get("getClientList")
 
         return await run_tool("superops_clients_search", client_factory, action)

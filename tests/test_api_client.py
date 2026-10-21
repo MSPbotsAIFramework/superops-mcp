@@ -296,3 +296,239 @@ async def test_empty_400_explains_likely_cause(monkeypatch):
     result = await _call(monkeypatch, rec, "superops_test_connection", {})
     assert result["error"]["code"] == "invalid_argument"
     assert "subdomain" in result["error"]["message"]
+
+
+# ---- compatibility aliases from the older tool contract ----------------------
+
+GROUPS = {"getTechnicianGroupList": [{"groupId": "g1", "name": "Service Desk"}, {"groupId": "g2", "name": "Network"}]}
+
+
+async def test_ticket_create_category_name_is_category(monkeypatch):
+    rec = Recorder({"createTicket": {"createTicket": {"ticketId": "9"}}})
+    await _call(monkeypatch, rec, "superops_tickets_create", {"subject": "s", "clientId": "c1", "categoryName": "Network"})
+    assert rec.variables()["input"]["category"] == "Network"
+
+
+async def test_ticket_create_category_conflict(monkeypatch):
+    rec = Recorder()
+    args = {"subject": "s", "clientId": "c1", "category": "Network", "categoryName": "Hardware"}
+    result = await _call(monkeypatch, rec, "superops_tickets_create", args)
+    assert result["error"]["code"] == "invalid_argument"
+    assert rec.requests == []
+
+
+async def test_ticket_create_tech_group_name_resolves(monkeypatch):
+    rec = Recorder({"getTechnicianGroupList": GROUPS, "createTicket": {"createTicket": {"ticketId": "9"}}})
+    await _call(monkeypatch, rec, "superops_tickets_create", {"subject": "s", "clientId": "c1", "techGroupName": " service desk "})
+    assert rec.variables(1)["input"]["techGroup"] == {"groupId": "g1"}
+
+
+@pytest.mark.parametrize(
+    "groups,args,expected",
+    [
+        (GROUPS, {"techGroupName": "Billing"}, "Network, Service Desk"),
+        ({"getTechnicianGroupList": [{"groupId": "a", "name": "Ops"}, {"groupId": "b", "name": "ops"}]}, {"techGroupName": "Ops"}, "(a)"),
+        (GROUPS, {"techGroupName": "Network", "techGroupId": "g1"}, "disagree"),
+    ],
+)
+async def test_ticket_create_tech_group_name_errors(monkeypatch, groups, args, expected):
+    rec = Recorder({"getTechnicianGroupList": groups, "createTicket": {"createTicket": {}}})
+    result = await _call(monkeypatch, rec, "superops_tickets_create", {"subject": "s", "clientId": "c1", **args})
+    assert result["error"]["code"] == "invalid_argument"
+    assert expected in result["error"]["message"]
+    assert len(rec.requests) == 1  # only the group lookup, no createTicket
+
+
+async def test_ticket_create_requester_email_resolves(monkeypatch):
+    users = {
+        "getClientUserList": {
+            "userList": [{"userId": "u1", "email": "pat.doe@example.com"}, {"userId": "u2", "email": "pat@example.com"}]
+        }
+    }
+    rec = Recorder({"getClientUserList": users, "createTicket": {"createTicket": {"ticketId": "9"}}})
+    await _call(monkeypatch, rec, "superops_tickets_create", {"subject": "s", "clientId": "c1", "requesterEmail": "PAT@example.com"})
+    lookup = rec.variables(0)["input"]
+    assert lookup["clientId"] == "c1"
+    assert lookup["listInfo"]["condition"] == {"attribute": "email", "operator": "contains", "value": "PAT@example.com"}
+    assert rec.variables(1)["input"]["requester"] == {"userId": "u2"}
+
+
+@pytest.mark.parametrize(
+    "args", [{"requesterEmail": "nobody@example.com"}, {"requesterEmail": "pat@example.com", "requesterId": "u7"}]
+)
+async def test_ticket_create_requester_email_errors(monkeypatch, args):
+    users = {"getClientUserList": {"userList": [{"userId": "u2", "email": "pat@example.com"}]}}
+    rec = Recorder({"getClientUserList": users, "createTicket": {"createTicket": {}}})
+    result = await _call(monkeypatch, rec, "superops_tickets_create", {"subject": "s", "clientId": "c1", **args})
+    assert result["error"]["code"] == "invalid_argument"
+    assert len(rec.requests) == 1
+
+
+async def test_ticket_update_assignee_id_is_technician_id(monkeypatch):
+    rec = Recorder({"updateTicket": {"updateTicket": {"ticketId": "9"}}})
+    await _call(monkeypatch, rec, "superops_tickets_update", {"ticketId": "9", "assigneeId": "t1"})
+    assert rec.variables()["input"] == {"ticketId": "9", "technician": {"userId": "t1"}}
+    args = {"ticketId": "9", "assigneeId": "t1", "technicianId": "t2"}
+    conflict = await _call(monkeypatch, rec, "superops_tickets_update", args)
+    assert conflict["error"]["code"] == "invalid_argument"
+    assert len(rec.requests) == 1
+
+
+async def test_ticket_update_tech_group_name(monkeypatch):
+    rec = Recorder({"getTechnicianGroupList": GROUPS, "updateTicket": {"updateTicket": {"ticketId": "9"}}})
+    await _call(monkeypatch, rec, "superops_tickets_update", {"ticketId": "9", "techGroupName": "network"})
+    assert rec.variables(1)["input"] == {"ticketId": "9", "techGroup": {"groupId": "g2"}}
+
+
+async def test_ticket_update_resolution_adds_private_note(monkeypatch):
+    rec = Recorder({"updateTicket": {"updateTicket": {"ticketId": "9"}}, "createNote": {"createNote": {"noteId": "n1"}}})
+    args = {"ticketId": "9", "status": "Resolved", "resolution": "Replaced cable"}
+    result = await _call(monkeypatch, rec, "superops_tickets_update", args)
+    assert rec.variables(0)["input"] == {"ticketId": "9", "status": "Resolved"}
+    assert rec.variables(1)["input"] == {
+        "workItem": {"workId": "9", "module": "TICKET"},
+        "content": "Replaced cable",
+        "privacyType": "PRIVATE",
+    }
+    assert result == {"ticket": {"ticketId": "9"}, "resolutionNote": {"noteId": "n1"}}
+
+
+async def test_ticket_update_resolution_only(monkeypatch):
+    rec = Recorder({"createNote": {"createNote": {"noteId": "n1"}}})
+    result = await _call(monkeypatch, rec, "superops_tickets_update", {"ticketId": "9", "resolution": "Done"})
+    assert len(rec.requests) == 1 and "createNote" in json.loads(rec.requests[0].content)["query"]
+    assert result == {"ticket": None, "resolutionNote": {"noteId": "n1"}}
+
+
+async def test_ticket_update_reports_failed_resolution_note(monkeypatch):
+    rec = Recorder({"updateTicket": {"updateTicket": {"ticketId": "9"}}, "createNote": lambda r: httpx.Response(403)})
+    args = {"ticketId": "9", "status": "Resolved", "resolution": "Done"}
+    result = await _call(monkeypatch, rec, "superops_tickets_update", args)
+    assert result["ticket"] == {"ticketId": "9"} and result["resolutionNote"] is None
+    assert result["resolutionNoteError"]["code"] == "unauthorized"
+
+
+async def test_log_time_duration_minutes_become_hours(monkeypatch):
+    rec = Recorder({"createWorklogEntries": {"createWorklogEntries": [{"itemId": "w1"}]}})
+    await _call(monkeypatch, rec, "superops_tickets_log_time", {"ticketId": "9", "duration": 90, "description": "Fixed VPN"})
+    [entry] = rec.variables()["input"]
+    assert entry["qty"] == "1.5" and entry["notes"] == "Fixed VPN"
+    await _call(monkeypatch, rec, "superops_tickets_log_time", {"ticketId": "9", "duration": 20})
+    assert rec.variables(1)["input"][0]["qty"] == "0.3333"
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        {"ticketId": "9"},
+        {"ticketId": "9", "qty": "1", "duration": 60},
+        {"ticketId": "9", "qty": "1", "notes": "a", "description": "b"},
+        {"ticketId": "9", "duration": 0.001},
+    ],
+)
+async def test_log_time_argument_errors(monkeypatch, args):
+    rec = Recorder()
+    result = await _call(monkeypatch, rec, "superops_tickets_log_time", args)
+    assert result["error"]["code"] == "invalid_argument"
+    assert rec.requests == []
+
+
+async def test_log_time_work_type_resolves_service_item(monkeypatch):
+    items = {
+        "getServiceCatalogItemList": {
+            "items": [
+                {"itemId": "s1", "name": "Remote Support", "offerAsWorklogItem": False},
+                {"itemId": "s2", "name": "Remote Support", "offerAsWorklogItem": True},
+                {"itemId": "s3", "name": "Remote Support After Hours", "offerAsWorklogItem": True},
+            ]
+        }
+    }
+    rec = Recorder({"getServiceCatalogItemList": items, "createWorklogEntries": {"createWorklogEntries": []}})
+    await _call(monkeypatch, rec, "superops_tickets_log_time", {"ticketId": "9", "qty": "1", "workType": "remote support"})
+    assert rec.variables(0)["input"]["condition"] == {"attribute": "name", "operator": "contains", "value": "remote support"}
+    assert rec.variables(1)["input"][0]["serviceItem"] == {"itemId": "s2"}
+
+
+async def test_log_time_unknown_work_type(monkeypatch):
+    items = {"getServiceCatalogItemList": {"items": [{"itemId": "s3", "name": "On-site Visit"}]}}
+    rec = Recorder({"getServiceCatalogItemList": items, "createWorklogEntries": {"createWorklogEntries": []}})
+    args = {"ticketId": "9", "duration": 30, "workType": "On-site"}
+    result = await _call(monkeypatch, rec, "superops_tickets_log_time", args)
+    assert result["error"]["code"] == "invalid_argument"
+    assert "service catalog item" in result["error"]["message"]
+    assert len(rec.requests) == 1
+
+
+async def test_asset_patches_status_alias(monkeypatch):
+    rec = Recorder({"getAssetPatchDetails": {"getAssetPatchDetails": {}}})
+    await _call(monkeypatch, rec, "superops_assets_patches", {"assetId": "a1", "status": "Installed"})
+    condition = rec.variables()["input"]["listInfo"]["condition"]
+    assert condition == {"attribute": "installationStatus", "operator": "includes", "value": ["Installed"]}
+    args = {"assetId": "a1", "status": "Installed", "installationStatus": "Failed"}
+    conflict = await _call(monkeypatch, rec, "superops_assets_patches", args)
+    assert conflict["error"]["code"] == "invalid_argument"
+
+
+@pytest.mark.parametrize(
+    "tool,args,path",
+    [
+        ("superops_assets_software", {"assetId": "a1", "max": 20}, ("input", "listInfo")),
+        ("superops_clients_search", {"query": "x", "max": 20}, ("input",)),
+        ("superops_clients_list", {"max": 20}, ("input",)),
+        ("superops_assets_list", {"max": 20}, ("input",)),
+        ("superops_tickets_list", {"max": 20}, ("input",)),
+        ("superops_technicians_list", {"max": 20}, ("input",)),
+    ],
+)
+async def test_max_is_page_size(monkeypatch, tool, args, path):
+    rec = Recorder()
+    await _call(monkeypatch, rec, tool, args)
+    listing = rec.variables()
+    for key in path:
+        listing = listing[key]
+    assert listing["pageSize"] == 20
+
+
+async def test_max_is_capped_and_cursor_is_page(monkeypatch):
+    rec = Recorder()
+    await _call(monkeypatch, rec, "superops_clients_list", {"max": 500, "cursor": "3"})
+    assert rec.variables()["input"]["pageSize"] == 100 and rec.variables()["input"]["page"] == 3
+
+
+@pytest.mark.parametrize("args", [{"cursor": "abc"}, {"cursor": "2", "page": 3}, {"max": 10, "pageSize": 20}])
+async def test_paging_alias_errors(monkeypatch, args):
+    rec = Recorder()
+    result = await _call(monkeypatch, rec, "superops_tickets_list", args)
+    assert result["error"]["code"] == "invalid_argument"
+    assert rec.requests == []
+
+
+async def test_tickets_list_assignee_and_unassigned(monkeypatch):
+    rec = Recorder()
+    await _call(monkeypatch, rec, "superops_tickets_list", {"assigneeId": "t1"})
+    assert rec.variables(0)["input"]["condition"] == {"attribute": "technician", "operator": "includes", "value": ["t1"]}
+    await _call(monkeypatch, rec, "superops_tickets_list", {"unassigned": True})
+    assert rec.variables(1)["input"]["condition"] == {"attribute": "technician", "operator": "isEmpty"}
+    both = await _call(monkeypatch, rec, "superops_tickets_list", {"unassigned": True, "assigneeId": "t1"})
+    assert both["error"]["code"] == "invalid_argument"
+    assert len(rec.requests) == 2
+
+
+async def test_technicians_list_team_and_active_only(monkeypatch):
+    rec = Recorder()
+    await _call(monkeypatch, rec, "superops_technicians_list", {"teamId": "tm1", "activeOnly": True})
+    assert rec.variables()["input"]["condition"] == {"attribute": "team", "operator": "includes", "value": ["tm1"]}
+
+
+async def test_technician_groups_max_limits_locally(monkeypatch):
+    rec = Recorder({"getTechnicianGroupList": GROUPS})
+    result = await _call(monkeypatch, rec, "superops_technicians_groups", {"max": 1})
+    assert result == {"groups": [{"groupId": "g1", "name": "Service Desk"}], "count": 1, "totalCount": 2}
+
+
+async def test_custom_query_missing_query_is_invalid(monkeypatch):
+    rec = Recorder()
+    for args in ({}, {"query": "  "}):
+        result = await _call(monkeypatch, rec, "superops_custom_query", args)
+        assert result["error"]["code"] == "invalid_argument"
+    assert rec.requests == []

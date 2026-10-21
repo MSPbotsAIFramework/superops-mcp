@@ -48,6 +48,11 @@ Page = Annotated[int | None, Field(description="Page number from 1 (default 1)."
 PageSize = Annotated[
     int | None, Field(description=f"Results per page (default {DEFAULT_PAGE_SIZE}, max {MAX_PAGE_SIZE}).", ge=1, le=MAX_PAGE_SIZE)
 ]
+# Older clients page with max + cursor; both map onto page / pageSize.
+Max = Annotated[
+    int | None, Field(description=f"Maximum results; alias of pageSize (values above {MAX_PAGE_SIZE} are capped).", ge=1, le=500)
+]
+Cursor = Annotated[str | None, Field(description='Page number to fetch, as a string, e.g. "2"; alias of page.')]
 TENANT_VALUES = "Your tenant may rename or extend this list."
 STOCK_STATUSES = "Open, On Hold, Resolved, Closed, Waiting on third party"
 STOCK_PRIORITIES = "Critical, High, Medium, Low, Very Low"
@@ -78,6 +83,47 @@ def list_input(page: int | None, page_size: int | None, condition: dict | None =
 def text(value: str | None) -> str | None:
     stripped = (value or "").strip()
     return stripped or None
+
+
+def paging(
+    page: int | None, page_size: int | None, cursor: str | None = None, max_results: int | None = None
+) -> tuple[int | None, int | None]:
+    """Fold the max / cursor aliases into page / pageSize; raises ValueError when they disagree."""
+    if text(cursor):
+        raw = text(cursor) or ""
+        if not raw.isdigit() or int(raw) < 1:
+            raise ValueError('cursor must be a page number from 1, e.g. "2".')
+        if page is not None and page != int(raw):
+            raise ValueError("page and cursor disagree; pass only one of them.")
+        page = int(raw)
+    if max_results is not None:
+        capped = min(max_results, MAX_PAGE_SIZE)
+        if page_size is not None and page_size != capped:
+            raise ValueError("pageSize and max disagree; pass only one of them.")
+        page_size = capped
+    return page, page_size
+
+
+def alias(name: str, value: str | None, old_name: str, old_value: str | None) -> str | None:
+    """One value given under either of two parameter names; raises ValueError when both differ."""
+    new, old = text(value), text(old_value)
+    if new and old and new != old:
+        raise ValueError(f"{name} and {old_name} disagree; pass only one of them.")
+    return new or old
+
+
+def match_by_name(items: list[dict], name: str, kind: str, id_key: str) -> dict:
+    """The one item whose name equals ``name`` (case-insensitive); ValueError when none or several match."""
+    wanted = name.strip().casefold()
+    hits = [i for i in items if isinstance(i, dict) and str(i.get("name") or "").strip().casefold() == wanted]
+    if len(hits) == 1:
+        return hits[0]
+    if hits:
+        ids = ", ".join(f"{h.get('name')} ({h.get(id_key)})" for h in hits)
+        raise ValueError(f"Several {kind}s are named '{name.strip()}': {ids}. Pass the id instead.")
+    names = sorted({str(i.get("name")) for i in items if isinstance(i, dict) and i.get("name")})
+    listed = ", ".join(names[:50]) + (" ..." if len(names) > 50 else "")
+    raise ValueError(f"No {kind} named '{name.strip()}'. Known: {listed or 'none'}.")
 
 
 async def run_tool(

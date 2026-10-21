@@ -40,7 +40,7 @@ def operation_types(document: str) -> set[OperationType]:
 def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
     @mcp.tool(annotations=READ_ONLY)
     async def superops_custom_query(
-        query: Annotated[str, Field(description="GraphQL query document (query operations only).", min_length=1)],
+        query: Annotated[str | None, Field(description="GraphQL query document (query operations only). Required.")] = None,
         variables: Variables = None,
     ) -> str:
         """Run a read-only GraphQL query against the SuperOps API, e.g. getAssetSummary or getTicketNoteList.
@@ -49,6 +49,8 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         """
 
         async def action(client: SuperOpsClient) -> Any:
+            if not (query or "").strip():
+                raise ValueError("query is required: pass a GraphQL query document.")
             kinds = operation_types(query)
             if kinds != {OperationType.QUERY}:
                 raise ValueError("superops_custom_query only runs query operations; use superops_custom_mutation for writes.")

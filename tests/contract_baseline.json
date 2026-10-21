@@ -1,0 +1,396 @@
+{
+  "int_baseline": {
+    "superops_assets_get": {
+      "params": [
+        "assetId"
+      ],
+      "required": [
+        "assetId"
+      ]
+    },
+    "superops_assets_list": {
+      "params": [
+        "clientId",
+        "cursor",
+        "max",
+        "platform",
+        "status"
+      ],
+      "required": []
+    },
+    "superops_assets_patches": {
+      "params": [
+        "assetId",
+        "severity",
+        "status"
+      ],
+      "required": [
+        "assetId"
+      ]
+    },
+    "superops_assets_software": {
+      "params": [
+        "assetId",
+        "max",
+        "search"
+      ],
+      "required": [
+        "assetId"
+      ]
+    },
+    "superops_clients_get": {
+      "params": [
+        "accountId"
+      ],
+      "required": [
+        "accountId"
+      ]
+    },
+    "superops_clients_list": {
+      "params": [
+        "cursor",
+        "max",
+        "stage",
+        "status"
+      ],
+      "required": []
+    },
+    "superops_clients_search": {
+      "params": [
+        "max",
+        "query"
+      ],
+      "required": [
+        "query"
+      ]
+    },
+    "superops_custom_mutation": {
+      "params": [
+        "mutation",
+        "variables"
+      ],
+      "required": [
+        "mutation"
+      ]
+    },
+    "superops_custom_query": {
+      "params": [
+        "query",
+        "variables"
+      ],
+      "required": []
+    },
+    "superops_navigate": {
+      "params": [
+        "domain"
+      ],
+      "required": [
+        "domain"
+      ]
+    },
+    "superops_status": {
+      "params": [],
+      "required": []
+    },
+    "superops_technicians_get": {
+      "params": [
+        "technicianId"
+      ],
+      "required": [
+        "technicianId"
+      ]
+    },
+    "superops_technicians_groups": {
+      "params": [
+        "max"
+      ],
+      "required": []
+    },
+    "superops_technicians_list": {
+      "params": [
+        "activeOnly",
+        "cursor",
+        "max",
+        "teamId"
+      ],
+      "required": []
+    },
+    "superops_test_connection": {
+      "params": [],
+      "required": []
+    },
+    "superops_tickets_add_note": {
+      "params": [
+        "content",
+        "isPublic",
+        "ticketId"
+      ],
+      "required": [
+        "content",
+        "ticketId"
+      ]
+    },
+    "superops_tickets_create": {
+      "params": [
+        "categoryName",
+        "clientId",
+        "description",
+        "priority",
+        "requesterEmail",
+        "subject",
+        "techGroupName"
+      ],
+      "required": [
+        "clientId",
+        "subject"
+      ]
+    },
+    "superops_tickets_get": {
+      "params": [
+        "ticketId"
+      ],
+      "required": [
+        "ticketId"
+      ]
+    },
+    "superops_tickets_list": {
+      "params": [
+        "assigneeId",
+        "clientId",
+        "cursor",
+        "max",
+        "priority",
+        "status",
+        "unassigned"
+      ],
+      "required": []
+    },
+    "superops_tickets_log_time": {
+      "params": [
+        "billable",
+        "description",
+        "duration",
+        "ticketId",
+        "workType"
+      ],
+      "required": [
+        "duration",
+        "ticketId"
+      ]
+    },
+    "superops_tickets_update": {
+      "params": [
+        "assigneeId",
+        "priority",
+        "resolution",
+        "status",
+        "techGroupName",
+        "ticketId"
+      ],
+      "required": [
+        "ticketId"
+      ]
+    }
+  },
+  "upstream": {
+    "superops_assets_get": {
+      "params": [
+        "assetId"
+      ],
+      "required": [
+        "assetId"
+      ]
+    },
+    "superops_assets_list": {
+      "params": [
+        "clientId",
+        "platform",
+        "status"
+      ],
+      "required": []
+    },
+    "superops_assets_patches": {
+      "params": [
+        "assetId",
+        "installationStatus",
+        "severity"
+      ],
+      "required": [
+        "assetId"
+      ]
+    },
+    "superops_assets_software": {
+      "params": [
+        "assetId",
+        "search"
+      ],
+      "required": [
+        "assetId"
+      ]
+    },
+    "superops_clients_get": {
+      "params": [
+        "accountId"
+      ],
+      "required": [
+        "accountId"
+      ]
+    },
+    "superops_clients_list": {
+      "params": [
+        "stage",
+        "status"
+      ],
+      "required": []
+    },
+    "superops_clients_search": {
+      "params": [
+        "query"
+      ],
+      "required": [
+        "query"
+      ]
+    },
+    "superops_custom_mutation": {
+      "params": [
+        "mutation",
+        "variables"
+      ],
+      "required": [
+        "mutation"
+      ]
+    },
+    "superops_custom_query": {
+      "params": [
+        "query",
+        "variables"
+      ],
+      "required": []
+    },
+    "superops_navigate": {
+      "params": [
+        "domain"
+      ],
+      "required": [
+        "domain"
+      ]
+    },
+    "superops_status": {
+      "params": [],
+      "required": []
+    },
+    "superops_technicians_get": {
+      "params": [
+        "technicianId"
+      ],
+      "required": [
+        "technicianId"
+      ]
+    },
+    "superops_technicians_groups": {
+      "params": [],
+      "required": []
+    },
+    "superops_technicians_list": {
+      "params": [
+        "search"
+      ],
+      "required": []
+    },
+    "superops_technicians_lookups": {
+      "params": [],
+      "required": []
+    },
+    "superops_test_connection": {
+      "params": [],
+      "required": []
+    },
+    "superops_tickets_add_note": {
+      "params": [
+        "content",
+        "isPublic",
+        "ticketId"
+      ],
+      "required": [
+        "content",
+        "ticketId"
+      ]
+    },
+    "superops_tickets_create": {
+      "params": [
+        "category",
+        "clientId",
+        "description",
+        "impact",
+        "priority",
+        "requestType",
+        "requesterId",
+        "siteId",
+        "source",
+        "status",
+        "subcategory",
+        "subject",
+        "techGroupId",
+        "technicianId",
+        "urgency"
+      ],
+      "required": [
+        "clientId",
+        "subject"
+      ]
+    },
+    "superops_tickets_get": {
+      "params": [
+        "ticketId"
+      ],
+      "required": [
+        "ticketId"
+      ]
+    },
+    "superops_tickets_list": {
+      "params": [
+        "clientId",
+        "priority",
+        "status",
+        "technicianId"
+      ],
+      "required": []
+    },
+    "superops_tickets_log_time": {
+      "params": [
+        "afterHours",
+        "billDateTime",
+        "billable",
+        "notes",
+        "qty",
+        "serviceItemId",
+        "technicianId",
+        "ticketId",
+        "unitPrice"
+      ],
+      "required": [
+        "qty",
+        "ticketId"
+      ]
+    },
+    "superops_tickets_update": {
+      "params": [
+        "category",
+        "impact",
+        "priority",
+        "requestType",
+        "resolutionCode",
+        "status",
+        "subcategory",
+        "subject",
+        "techGroupId",
+        "technicianId",
+        "ticketId",
+        "urgency"
+      ],
+      "required": [
+        "ticketId"
+      ]
+    }
+  }
+}

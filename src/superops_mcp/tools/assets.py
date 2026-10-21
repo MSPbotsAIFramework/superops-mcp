@@ -19,7 +19,21 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
 from ..api_client import SuperOpsClient
-from ._common import READ_ONLY, ClientFactory, Page, PageSize, clause, join, list_input, run_tool, text
+from ._common import (
+    READ_ONLY,
+    ClientFactory,
+    Cursor,
+    Max,
+    Page,
+    PageSize,
+    alias,
+    clause,
+    join,
+    list_input,
+    paging,
+    run_tool,
+    text,
+)
 
 ASSET_LIST = """
 query listAssets($input: ListInfoInput!) {
@@ -76,6 +90,8 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         clientId: Annotated[str | None, Field(description="Only this client account id.")] = None,
         page: Page = None,
         pageSize: PageSize = None,
+        max: Max = None,
+        cursor: Cursor = None,
     ) -> str:
         """List managed assets by name: host, status, OS, IP, logged-in user, patch status, last contact.
 
@@ -83,6 +99,7 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         """
 
         async def action(client: SuperOpsClient) -> Any:
+            page_no, page_size = paging(page, pageSize, cursor, max)
             condition = join(
                 "AND",
                 [
@@ -92,7 +109,7 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
                 ],
             )
             sort = [{"attribute": "name", "order": "ASC"}]
-            data = await client.query(ASSET_LIST, {"input": list_input(page, pageSize, condition, sort)})
+            data = await client.query(ASSET_LIST, {"input": list_input(page_no, page_size, condition, sort)})
             return data.get("getAssetList")
 
         return await run_tool("superops_assets_list", client_factory, action)
@@ -117,12 +134,14 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         search: Annotated[str | None, Field(description="Part of the software name.")] = None,
         page: Page = None,
         pageSize: PageSize = None,
+        max: Max = None,
     ) -> str:
         """List software installed on an asset: name, version, install date, bitness and path."""
 
         async def action(client: SuperOpsClient) -> Any:
+            page_no, page_size = paging(page, pageSize, None, max)
             condition = clause("software.name", "contains", text(search)) if text(search) else None
-            variables = {"input": {"assetId": assetId.strip(), "listInfo": list_input(page, pageSize, condition)}}
+            variables = {"input": {"assetId": assetId.strip(), "listInfo": list_input(page_no, page_size, condition)}}
             data = await client.query(ASSET_SOFTWARE, variables)
             return data.get("getAssetSoftwareList")
 
@@ -135,15 +154,17 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         severity: Annotated[list[str] | None, Field(description='Any of these severities, e.g. "Recommended", "Others".')] = None,
         page: Page = None,
         pageSize: PageSize = None,
+        status: Annotated[str | None, Field(description="Alias of installationStatus.")] = None,
     ) -> str:
         """List an asset's patches: title, KB numbers, category, severity, approval and install status."""
 
         async def action(client: SuperOpsClient) -> Any:
             severities = [s.strip() for s in severity or [] if s and s.strip()]
+            install_status = alias("installationStatus", installationStatus, "status", status)
             condition = join(
                 "AND",
                 [
-                    clause("installationStatus", "includes", [text(installationStatus)]) if text(installationStatus) else None,
+                    clause("installationStatus", "includes", [install_status]) if install_status else None,
                     clause("severity", "includes", severities) if severities else None,
                 ],
             )

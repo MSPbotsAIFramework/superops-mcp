@@ -19,7 +19,20 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
 from ..api_client import SuperOpsClient, SuperOpsError
-from ._common import READ_ONLY, ClientFactory, Page, PageSize, clause, join, list_input, run_tool, text
+from ._common import (
+    READ_ONLY,
+    ClientFactory,
+    Cursor,
+    Max,
+    Page,
+    PageSize,
+    clause,
+    join,
+    list_input,
+    paging,
+    run_tool,
+    text,
+)
 
 TECHNICIAN_LIST = """
 query listTechnicians($input: ListInfoInput!) {
@@ -50,8 +63,14 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
     @mcp.tool(annotations=READ_ONLY)
     async def superops_technicians_list(
         search: Annotated[str | None, Field(description="Text in the technician's name or email.")] = None,
+        teamId: Annotated[str | None, Field(description="Only technicians in this team id (see superops_technicians_lookups).")] = None,
+        activeOnly: Annotated[
+            bool | None, Field(description="Accepted for compatibility; SuperOps has no active flag, so it has no effect.")
+        ] = None,
         page: Page = None,
         pageSize: PageSize = None,
+        max: Max = None,
+        cursor: Cursor = None,
     ) -> str:
         """List technicians by name: email, phone, role, groups, team and manager.
 
@@ -59,10 +78,17 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         """
 
         async def action(client: SuperOpsClient) -> Any:
+            page_no, page_size = paging(page, pageSize, cursor, max)
             term = text(search)
-            condition = join("OR", [clause("name", "contains", term), clause("email", "contains", term)]) if term else None
+            condition = join(
+                "AND",
+                [
+                    join("OR", [clause("name", "contains", term), clause("email", "contains", term)]) if term else None,
+                    clause("team", "includes", [text(teamId)]) if text(teamId) else None,
+                ],
+            )
             sort = [{"attribute": "name", "order": "ASC"}]
-            data = await client.query(TECHNICIAN_LIST, {"input": list_input(page, pageSize, condition, sort)})
+            data = await client.query(TECHNICIAN_LIST, {"input": list_input(page_no, page_size, condition, sort)})
             return data.get("getTechnicianList")
 
         return await run_tool("superops_technicians_list", client_factory, action)
@@ -85,12 +111,17 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         return await run_tool("superops_technicians_get", client_factory, action)
 
     @mcp.tool(annotations=READ_ONLY)
-    async def superops_technicians_groups() -> str:
+    async def superops_technicians_groups(
+        max: Annotated[int | None, Field(description="Return at most this many groups (default all).", ge=1)] = None,
+    ) -> str:
         """List every technician group (id and name); member lists are not exposed by SuperOps."""
 
         async def action(client: SuperOpsClient) -> Any:
             groups = (await client.query(GROUP_LIST)).get("getTechnicianGroupList") or []
-            return {"groups": groups, "count": len(groups)}
+            total = len(groups)
+            if max is not None and total > max:
+                return {"groups": groups[:max], "count": max, "totalCount": total}
+            return {"groups": groups, "count": total}
 
         return await run_tool("superops_technicians_groups", client_factory, action)
 

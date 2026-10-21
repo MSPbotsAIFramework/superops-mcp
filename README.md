@@ -47,28 +47,54 @@ maximum 100) and return SuperOps' `listInfo` `{page, pageSize, totalCount, hasMo
 | `superops_navigate` | Describe the tools of one area (changes nothing) | **domain** (`clients`, `tickets`, `assets`, `technicians`, `custom`) |
 | `superops_status` | Show the tenant and region this connection targets (no API call) | - |
 | `superops_test_connection` | Test the token and subdomain; returns the tenant's client count | - |
-| `superops_clients_list` | List client accounts, optionally by stage and status | status, stage, page, pageSize |
+| `superops_clients_list` | List client accounts, optionally by stage and status | status, stage, page, pageSize, max, cursor |
 | `superops_clients_get` | Get one client account with contacts, HQ site, groups and custom fields | **accountId** |
-| `superops_clients_search` | Search clients by part of the name or an email domain | **query**, page, pageSize |
-| `superops_tickets_list` | List tickets, newest first | status (list), priority (list), clientId, technicianId, page, pageSize |
+| `superops_clients_search` | Search clients by part of the name or an email domain | **query**, page, pageSize, max |
+| `superops_tickets_list` | List tickets, newest first | status (list), priority (list), clientId, technicianId, assigneeId, unassigned, page, pageSize, max, cursor |
 | `superops_tickets_get` | Get one ticket with SLA times, worklog total and custom fields | **ticketId** |
-| `superops_tickets_create` | Create a ticket (**write**) | **subject**, **clientId**, description, source, status, priority, impact, urgency, category, subcategory, requestType, siteId, requesterId, techGroupId, technicianId |
-| `superops_tickets_update` | Change status, priority, classification or assignee (**write**) | **ticketId**, subject, status, priority, impact, urgency, category, subcategory, requestType, resolutionCode, technicianId, techGroupId |
+| `superops_tickets_create` | Create a ticket (**write**) | **subject**, **clientId**, description, source, status, priority, impact, urgency, category, subcategory, requestType, siteId, requesterId, techGroupId, technicianId, categoryName, techGroupName, requesterEmail |
+| `superops_tickets_update` | Change status, priority, classification or assignee (**write**) | **ticketId**, subject, status, priority, impact, urgency, category, subcategory, requestType, resolutionCode, technicianId, techGroupId, assigneeId, techGroupName, resolution |
 | `superops_tickets_add_note` | Add a private (default) or public note (**write**) | **ticketId**, **content**, isPublic |
-| `superops_tickets_log_time` | Log worked time on a ticket (**write**) | **ticketId**, **qty**, billDateTime, notes, billable, afterHours, technicianId, serviceItemId, unitPrice |
-| `superops_assets_list` | List managed assets | status, platform, clientId, page, pageSize |
+| `superops_tickets_log_time` | Log worked time on a ticket (**write**) | **ticketId**, qty or duration (exactly one), billDateTime, notes, billable, afterHours, technicianId, serviceItemId, unitPrice, description, workType |
+| `superops_assets_list` | List managed assets | status, platform, clientId, page, pageSize, max, cursor |
 | `superops_assets_get` | Get one asset: hardware, OS, network, agent and patch status | **assetId** |
-| `superops_assets_software` | Software installed on an asset | **assetId**, search, page, pageSize |
-| `superops_assets_patches` | Patches of an asset with approval and install status | **assetId**, installationStatus, severity (list), page, pageSize |
-| `superops_technicians_list` | List technicians, optionally by name or email | search, page, pageSize |
+| `superops_assets_software` | Software installed on an asset | **assetId**, search, page, pageSize, max |
+| `superops_assets_patches` | Patches of an asset with approval and install status | **assetId**, installationStatus, status, severity (list), page, pageSize |
+| `superops_technicians_list` | List technicians, optionally by name or email | search, teamId, activeOnly, page, pageSize, max, cursor |
 | `superops_technicians_get` | Get one technician | **technicianId** |
-| `superops_technicians_groups` | List technician groups | - |
+| `superops_technicians_groups` | List technician groups | max |
 | `superops_technicians_lookups` | Roles, teams, designations, business functions and groups with ids | - |
-| `superops_custom_query` | Run a read-only GraphQL query | **query**, variables |
+| `superops_custom_query` | Run a read-only GraphQL query | query (required at run time), variables |
 | `superops_custom_mutation` | Run a GraphQL mutation (**write**) | **mutation**, variables |
 
 Ticket status, priority, impact, urgency, category and resolution codes are strings configured
 per tenant; the stock values are listed in each parameter's description.
+
+### Compatibility parameters
+
+The gateway may still send arguments from the older tool contract, so these are accepted and
+mapped (`tests/contract_baseline.json` and `tests/test_contract.py` pin both contracts). When an
+old and a new form are both given and disagree, the call fails with `invalid_argument`.
+
+| Parameter | Tools | Maps to |
+|---|---|---|
+| `max` | list / search tools, `superops_assets_software` | `pageSize` (values above 100 are capped) |
+| `max` | `superops_technicians_groups` | limits the returned list locally (`totalCount` shows the full count) |
+| `cursor` | list tools | `page`, given as a string, e.g. `"2"` |
+| `assigneeId` | `superops_tickets_list`, `superops_tickets_update` | `technicianId` |
+| `unassigned` | `superops_tickets_list` | only tickets without a technician |
+| `teamId` | `superops_technicians_list` | filter on the technician's team |
+| `activeOnly` | `superops_technicians_list` | accepted, no effect (SuperOps has no active flag) |
+| `categoryName` | `superops_tickets_create` | `category` |
+| `techGroupName` | `superops_tickets_create`, `superops_tickets_update` | `techGroupId`, looked up by exact name (any case) in `getTechnicianGroupList` |
+| `requesterEmail` | `superops_tickets_create` | `requesterId`, looked up by exact email among the client's users (`getClientUserList`) |
+| `resolution` | `superops_tickets_update` | a private ticket note (`createNote`) in the same call, returned as `resolutionNote` next to `ticket` |
+| `duration` | `superops_tickets_log_time` | `qty` in hours (minutes / 60); pass exactly one of `qty` or `duration` |
+| `description` | `superops_tickets_log_time` | `notes` |
+| `workType` | `superops_tickets_log_time` | `serviceItemId`, looked up by exact name in `getServiceCatalogItemList` |
+| `status` | `superops_assets_patches` | `installationStatus` |
+
+Unknown or ambiguous names and emails fail with `invalid_argument` before anything is written.
 
 Errors come back as a JSON envelope instead of an exception:
 
@@ -127,7 +153,8 @@ uv run pytest
 
 ## Delivery notes
 
-- **Tool count (22).** Kept as is because the tool names are an existing contract.
+- **Tool count (22).** Kept as is because the tool names are an existing contract; parameters
+  are a superset of the deployed and the upstream contracts (see Compatibility parameters).
 - **Schema-checked queries.** Every GraphQL document was validated against the SuperOps MSP
   schema published at developer.superops.com.
 - **Read-only custom queries.** `superops_custom_query` parses the document and refuses

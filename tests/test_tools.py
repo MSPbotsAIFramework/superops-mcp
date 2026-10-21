@@ -37,7 +37,7 @@ EXPECTED_TOOLS: dict[str, set[str]] = {
     "superops_tickets_create": {"subject", "clientId"},
     "superops_tickets_update": {"ticketId"},
     "superops_tickets_add_note": {"ticketId", "content"},
-    "superops_tickets_log_time": {"ticketId", "qty"},
+    "superops_tickets_log_time": {"ticketId"},
     "superops_assets_list": set(),
     "superops_assets_get": {"assetId"},
     "superops_assets_software": {"assetId"},
@@ -46,7 +46,7 @@ EXPECTED_TOOLS: dict[str, set[str]] = {
     "superops_technicians_get": {"technicianId"},
     "superops_technicians_groups": set(),
     "superops_technicians_lookups": set(),
-    "superops_custom_query": {"query"},
+    "superops_custom_query": set(),
     "superops_custom_mutation": {"mutation"},
 }
 
