@@ -128,6 +128,9 @@ class SuperOpsCredentials:
     api_token: str
     subdomain: str
     region: str = DEFAULT_REGION
+    # Set when a header value is malformed: tools then return invalid_argument
+    # instead of calling SuperOps, while tools/list still works.
+    header_error: str | None = None
 
     def __repr__(self) -> str:  # never leak the token into logs or tracebacks
         return f"SuperOpsCredentials(subdomain={self.subdomain!r}, region={self.region!r}, api_token=<redacted>)"
@@ -139,6 +142,7 @@ class SuperOpsClient:
     def __init__(self, credentials: SuperOpsCredentials, http_client: httpx.AsyncClient | None = None):
         self._credentials = credentials
         self._http = http_client
+        self.header_error = credentials.header_error
         self.endpoint = API_ENDPOINTS.get(credentials.region, API_ENDPOINTS[DEFAULT_REGION])
 
     @property

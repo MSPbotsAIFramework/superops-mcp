@@ -90,7 +90,11 @@ def normalize_subdomain(value: str) -> str | None:
 
 
 class GatewayCredentialsMiddleware:
-    """Reads the SuperOps headers on /mcp requests; 401 when the token or subdomain is missing."""
+    """Reads the SuperOps headers on /mcp requests; 401 when the token or subdomain is missing.
+
+    A malformed subdomain or region does not block the request (tools/list must work
+    with any values); tools report it instead.
+    """
 
     def __init__(self, app: ASGIApp):
         self.app = app
@@ -119,17 +123,20 @@ class GatewayCredentialsMiddleware:
 
         subdomain = normalize_subdomain(raw_subdomain)
         region = (_clean(request.headers.get(HEADER_REGION)) or DEFAULT_REGION).lower()
+        header_error = None
         if subdomain is None or region not in API_ENDPOINTS:
-            message = (
+            header_error = (
                 f"{HEADER_SUBDOMAIN} must be the tenant subdomain, e.g. yourcompany"
                 if subdomain is None
                 else f"{HEADER_REGION} must be one of: {', '.join(API_ENDPOINTS)}"
             )
-            await JSONResponse({"error": "Invalid header", "message": message}, status_code=400)(scope, receive, send)
-            return
+            # Safe stand-ins; tools return header_error before any API call.
+            subdomain = subdomain or "invalid"
+            region = region if region in API_ENDPOINTS else DEFAULT_REGION
 
         request_id = (request.headers.get("x-request-id") or "").strip()[:64] or uuid.uuid4().hex[:12]
-        creds_token = _credentials_var.set(SuperOpsCredentials(api_token=token, subdomain=subdomain, region=region))
+        credentials = SuperOpsCredentials(api_token=token, subdomain=subdomain, region=region, header_error=header_error)
+        creds_token = _credentials_var.set(credentials)
         rid_token = request_id_var.set(request_id)
         try:
             await self.app(scope, receive, send)

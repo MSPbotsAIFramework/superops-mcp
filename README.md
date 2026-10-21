@@ -33,8 +33,9 @@ How credentials are sent to SuperOps: every call is a GraphQL `POST` to
 `Authorization: Bearer <token>` and `CustomerSubDomain: <subdomain>`. Values that look like
 unresolved templates (`${...}`) are treated as missing.
 
-A request to `/mcp` without the token or subdomain gets HTTP 401 naming the missing header; a
-malformed subdomain or unknown region gets HTTP 400.
+A request to `/mcp` without the token or subdomain gets HTTP 401 naming the missing header. A
+malformed subdomain or unknown region does not block `tools/list`; tools then return an
+`invalid_argument` error describing the bad header.
 
 ## Tools
 
