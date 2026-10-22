@@ -541,6 +541,11 @@ PAGED_TOOLS = [
     ("superops_clients_search", {"query": "acme"}, "getClientList", "clients", ("input",)),
     ("superops_assets_software", {"assetId": "a1"}, "getAssetSoftwareList", "assetSoftwares", ("input", "listInfo")),
     ("superops_assets_patches", {"assetId": "a1"}, "getAssetPatchDetails", "assetPatches", ("input", "listInfo")),
+    # Their `cursor` is only an alias of the page number, so they need offset just the same.
+    ("superops_clients_list", {}, "getClientList", "clients", ("input",)),
+    ("superops_tickets_list", {}, "getTicketList", "tickets", ("input",)),
+    ("superops_assets_list", {}, "getAssetList", "assets", ("input",)),
+    ("superops_technicians_list", {}, "getTechnicianList", "userList", ("input",)),
 ]
 
 
@@ -663,3 +668,12 @@ async def test_page_only_call_is_unchanged(monkeypatch, tool, args, root, field,
     assert set(listing) <= {"page", "pageSize", "condition", "sort"}
     assert [r["id"] for r in result[field]] == list(range((number - 1) * size, min(number * size, 125)))
     assert result["listInfo"] == {"page": number, "pageSize": size, "totalCount": 125, "hasMore": True}
+
+
+
+@pytest.mark.parametrize("tool,args,root,field,path", PAGED_TOOLS[3:])
+async def test_cursor_alias_still_reads_that_page(monkeypatch, tool, args, root, field, path):
+    rec = _paged_recorder(root, field, path, _small_records(60))
+    result = await _call(monkeypatch, rec, tool, {**args, "cursor": "2", "pageSize": 25})
+    assert (_list_info(rec, path)["page"], _list_info(rec, path)["pageSize"]) == (2, 25)
+    assert [r["id"] for r in result[field]] == list(range(25, 50)) and result["next_offset"] == 50

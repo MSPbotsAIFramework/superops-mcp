@@ -78,11 +78,12 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         pageSize: PageSize = None,
         max: Max = None,
         cursor: Cursor = None,
+        offset: Offset = None,
     ) -> str:
         """List client accounts by name, optionally by stage and status, with contacts and HQ site."""
 
         async def action(client: SuperOpsClient) -> Any:
-            page_no, page_size = paging(page, pageSize, cursor, max)
+            number, size, start = locate(offset, *paging(page, pageSize, cursor, max))
             condition = join(
                 "AND",
                 [
@@ -90,8 +91,8 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
                     clause("status", "includes", [text(status)]) if text(status) else None,
                 ],
             )
-            data = await client.query(CLIENT_LIST, {"input": list_input(page_no, page_size, condition, BY_NAME)})
-            return data.get("getClientList")
+            data = await client.query(CLIENT_LIST, {"input": list_input(number, size, condition, BY_NAME)})
+            return page_result(data.get("getClientList"), "clients", number, size, start)
 
         return await run_tool("superops_clients_list", client_factory, action)
 

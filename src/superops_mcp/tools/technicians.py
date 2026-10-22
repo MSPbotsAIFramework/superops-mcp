@@ -24,11 +24,14 @@ from ._common import (
     ClientFactory,
     Cursor,
     Max,
+    Offset,
     Page,
     PageSize,
     clause,
     join,
     list_input,
+    locate,
+    page_result,
     paging,
     run_tool,
     text,
@@ -71,6 +74,7 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         pageSize: PageSize = None,
         max: Max = None,
         cursor: Cursor = None,
+        offset: Offset = None,
     ) -> str:
         """List technicians by name: email, phone, role, groups, team and manager.
 
@@ -78,7 +82,7 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         """
 
         async def action(client: SuperOpsClient) -> Any:
-            page_no, page_size = paging(page, pageSize, cursor, max)
+            number, size, start = locate(offset, *paging(page, pageSize, cursor, max))
             term = text(search)
             condition = join(
                 "AND",
@@ -88,8 +92,8 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
                 ],
             )
             sort = [{"attribute": "name", "order": "ASC"}]
-            data = await client.query(TECHNICIAN_LIST, {"input": list_input(page_no, page_size, condition, sort)})
-            return data.get("getTechnicianList")
+            data = await client.query(TECHNICIAN_LIST, {"input": list_input(number, size, condition, sort)})
+            return page_result(data.get("getTechnicianList"), "userList", number, size, start)
 
         return await run_tool("superops_technicians_list", client_factory, action)
 

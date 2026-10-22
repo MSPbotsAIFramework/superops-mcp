@@ -95,6 +95,7 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         pageSize: PageSize = None,
         max: Max = None,
         cursor: Cursor = None,
+        offset: Offset = None,
     ) -> str:
         """List managed assets by name: host, status, OS, IP, logged-in user, patch status, last contact.
 
@@ -102,7 +103,7 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         """
 
         async def action(client: SuperOpsClient) -> Any:
-            page_no, page_size = paging(page, pageSize, cursor, max)
+            number, size, start = locate(offset, *paging(page, pageSize, cursor, max))
             condition = join(
                 "AND",
                 [
@@ -112,8 +113,8 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
                 ],
             )
             sort = [{"attribute": "name", "order": "ASC"}]
-            data = await client.query(ASSET_LIST, {"input": list_input(page_no, page_size, condition, sort)})
-            return data.get("getAssetList")
+            data = await client.query(ASSET_LIST, {"input": list_input(number, size, condition, sort)})
+            return page_result(data.get("getAssetList"), "assets", number, size, start)
 
         return await run_tool("superops_assets_list", client_factory, action)
 

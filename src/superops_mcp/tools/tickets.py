@@ -35,6 +35,7 @@ from ._common import (
     ClientFactory,
     Cursor,
     Max,
+    Offset,
     Page,
     PageSize,
     alias,
@@ -42,7 +43,9 @@ from ._common import (
     compact,
     join,
     list_input,
+    locate,
     match_by_name,
+    page_result,
     paging,
     run_tool,
     text,
@@ -239,6 +242,7 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         unassigned: Annotated[bool | None, Field(description="Only tickets with no technician assigned.")] = None,
         max: Max = None,
         cursor: Cursor = None,
+        offset: Offset = None,
     ) -> str:
         """List tickets, newest first: subject, status, priority, client, requester and assignee.
 
@@ -246,7 +250,7 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         """
 
         async def action(client: SuperOpsClient) -> Any:
-            page_no, page_size = paging(page, pageSize, cursor, max)
+            number, size, start = locate(offset, *paging(page, pageSize, cursor, max))
             technician = alias("technicianId", technicianId, "assigneeId", assigneeId)
             if unassigned and technician:
                 raise ValueError("unassigned cannot be combined with technicianId / assigneeId.")
@@ -263,8 +267,8 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
                 ],
             )
             sort = [{"attribute": "createdTime", "order": "DESC"}]
-            data = await client.query(TICKET_LIST, {"input": list_input(page_no, page_size, condition, sort)})
-            return data.get("getTicketList")
+            data = await client.query(TICKET_LIST, {"input": list_input(number, size, condition, sort)})
+            return page_result(data.get("getTicketList"), "tickets", number, size, start)
 
         return await run_tool("superops_tickets_list", client_factory, action)
 
