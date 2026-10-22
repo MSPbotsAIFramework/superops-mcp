@@ -41,7 +41,11 @@ malformed subdomain or unknown region does not block `tools/list`; tools then re
 
 All tools return a JSON string. Lists take `page` (from 1) and `pageSize` (default 50,
 maximum 100) and return SuperOps' `listInfo` `{page, pageSize, totalCount, hasMore}`;
-`hasMore` is `null`, not `false`, on the last page.
+`hasMore` is `null`, not `false`, on the last page. `superops_clients_search`,
+`superops_assets_software` and `superops_assets_patches` also take `offset` (record position
+from 0, overrides `page`) and return `offset` / `next_offset`: when a page is too large for one
+response only the records that fit are returned, and `next_offset` continues right after them
+(the rest of a cut page is on no other page number).
 
 | Tool | Purpose | Parameters (required in **bold**) |
 |---|---|---|
@@ -50,7 +54,7 @@ maximum 100) and return SuperOps' `listInfo` `{page, pageSize, totalCount, hasMo
 | `superops_test_connection` | Test the token and subdomain; returns the tenant's client count | - |
 | `superops_clients_list` | List client accounts, optionally by stage and status | status, stage, page, pageSize, max, cursor |
 | `superops_clients_get` | Get one client account with contacts, HQ site, groups and custom fields | **accountId** |
-| `superops_clients_search` | Search clients by part of the name or an email domain | **query**, page, pageSize, max |
+| `superops_clients_search` | Search clients by part of the name or an email domain | **query**, page, pageSize, max, offset |
 | `superops_tickets_list` | List tickets, newest first | status (list), priority (list), clientId, technicianId, assigneeId, unassigned, page, pageSize, max, cursor |
 | `superops_tickets_get` | Get one ticket with SLA times, worklog total and custom fields | **ticketId** |
 | `superops_tickets_create` | Create a ticket (**write**) | **subject**, **clientId**, description, source, status, priority, impact, urgency, category, subcategory, requestType, siteId, requesterId, techGroupId, technicianId, categoryName, techGroupName, requesterEmail |
@@ -59,8 +63,8 @@ maximum 100) and return SuperOps' `listInfo` `{page, pageSize, totalCount, hasMo
 | `superops_tickets_log_time` | Log worked time on a ticket (**write**) | **ticketId**, qty or duration (exactly one), billDateTime, notes, billable, afterHours, technicianId, serviceItemId, unitPrice, description, workType |
 | `superops_assets_list` | List managed assets | status, platform, clientId, page, pageSize, max, cursor |
 | `superops_assets_get` | Get one asset: hardware, OS, network, agent and patch status | **assetId** |
-| `superops_assets_software` | Software installed on an asset | **assetId**, search, page, pageSize, max |
-| `superops_assets_patches` | Patches of an asset with approval and install status | **assetId**, installationStatus, status, severity (list), page, pageSize |
+| `superops_assets_software` | Software installed on an asset | **assetId**, search, page, pageSize, max, offset |
+| `superops_assets_patches` | Patches of an asset with approval and install status | **assetId**, installationStatus, status, severity (list), page, pageSize, offset |
 | `superops_technicians_list` | List technicians, optionally by name or email | search, teamId, activeOnly, page, pageSize, max, cursor |
 | `superops_technicians_get` | Get one technician | **technicianId** |
 | `superops_technicians_groups` | List technician groups | max |

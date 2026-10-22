@@ -24,12 +24,15 @@ from ._common import (
     ClientFactory,
     Cursor,
     Max,
+    Offset,
     Page,
     PageSize,
     alias,
     clause,
     join,
     list_input,
+    locate,
+    page_result,
     paging,
     run_tool,
     text,
@@ -135,15 +138,16 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         page: Page = None,
         pageSize: PageSize = None,
         max: Max = None,
+        offset: Offset = None,
     ) -> str:
         """List software installed on an asset: name, version, install date, bitness and path."""
 
         async def action(client: SuperOpsClient) -> Any:
-            page_no, page_size = paging(page, pageSize, None, max)
+            number, size, start = locate(offset, *paging(page, pageSize, None, max))
             condition = clause("software.name", "contains", text(search)) if text(search) else None
-            variables = {"input": {"assetId": assetId.strip(), "listInfo": list_input(page_no, page_size, condition)}}
+            variables = {"input": {"assetId": assetId.strip(), "listInfo": list_input(number, size, condition)}}
             data = await client.query(ASSET_SOFTWARE, variables)
-            return data.get("getAssetSoftwareList")
+            return page_result(data.get("getAssetSoftwareList"), "assetSoftwares", number, size, start)
 
         return await run_tool("superops_assets_software", client_factory, action)
 
@@ -155,6 +159,7 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         page: Page = None,
         pageSize: PageSize = None,
         status: Annotated[str | None, Field(description="Alias of installationStatus.")] = None,
+        offset: Offset = None,
     ) -> str:
         """List an asset's patches: title, KB numbers, category, severity, approval and install status."""
 
@@ -168,8 +173,9 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
                     clause("severity", "includes", severities) if severities else None,
                 ],
             )
-            variables = {"input": {"assetId": assetId.strip(), "listInfo": list_input(page, pageSize, condition)}}
+            number, size, start = locate(offset, page, pageSize)
+            variables = {"input": {"assetId": assetId.strip(), "listInfo": list_input(number, size, condition)}}
             data = await client.query(ASSET_PATCHES, variables)
-            return data.get("getAssetPatchDetails")
+            return page_result(data.get("getAssetPatchDetails"), "assetPatches", number, size, start)
 
         return await run_tool("superops_assets_patches", client_factory, action)

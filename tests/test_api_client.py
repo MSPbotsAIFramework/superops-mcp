@@ -532,3 +532,134 @@ async def test_custom_query_missing_query_is_invalid(monkeypatch):
         result = await _call(monkeypatch, rec, "superops_custom_query", args)
         assert result["error"]["code"] == "invalid_argument"
     assert rec.requests == []
+
+
+# ---- page-number paging that survives truncation (offset / next_offset) ------
+
+# (tool, base args, GraphQL root field, list field, path to the ListInfoInput in the variables)
+PAGED_TOOLS = [
+    ("superops_clients_search", {"query": "acme"}, "getClientList", "clients", ("input",)),
+    ("superops_assets_software", {"assetId": "a1"}, "getAssetSoftwareList", "assetSoftwares", ("input", "listInfo")),
+    ("superops_assets_patches", {"assetId": "a1"}, "getAssetPatchDetails", "assetPatches", ("input", "listInfo")),
+]
+
+
+def _big_records(n: int) -> list[dict]:
+    # 40 fields of 80 characters: nothing to shorten, so only a few records fit one response.
+    return [{"id": i, **{f"f{k}": f"{i:04d}" + "x" * 76 for k in range(40)}} for i in range(n)]
+
+
+def _small_records(n: int) -> list[dict]:
+    return [{"id": i} for i in range(n)]
+
+
+def _list_info(rec: Recorder, path: tuple, index: int = -1) -> dict:
+    listing = json.loads(rec.requests[index].content)["variables"]
+    for key in path:
+        listing = listing[key]
+    return listing
+
+
+def _paged_api(root: str, field: str, path: tuple, records: list[dict]):
+    """SuperOps pages by page (from 1) and pageSize only; hasMore is null on the last page."""
+
+    def reply(request: httpx.Request) -> httpx.Response:
+        listing = json.loads(request.content)["variables"]
+        for key in path:
+            listing = listing[key]
+        number, size = listing["page"], listing["pageSize"]
+        data = records[(number - 1) * size : number * size]
+        more = number * size < len(records) or None
+        info = {"page": number, "pageSize": size, "totalCount": len(records), "hasMore": more}
+        return httpx.Response(200, json={"data": {root: {field: data, "listInfo": info}}})
+
+    return reply
+
+
+def _paged_recorder(root, field, path, records) -> Recorder:
+    return Recorder({root: _paged_api(root, field, path, records)})
+
+
+async def _walk(monkeypatch, tool, args, root, field, path, records, first) -> tuple[list[int], list[dict]]:
+    rec = _paged_recorder(root, field, path, records)
+    results = [await _call(monkeypatch, rec, tool, {**args, **first})]
+    while results[-1].get("next_offset") is not None:
+        assert len(results) < 50
+        results.append(await _call(monkeypatch, rec, tool, {**args, "pageSize": first["pageSize"], "offset": results[-1]["next_offset"]}))
+    return [r["id"] for res in results for r in res[field]], results
+
+
+@pytest.mark.parametrize("tool,args,root,field,path", PAGED_TOOLS)
+async def test_cut_pages_walked_by_next_offset_return_every_record_once(monkeypatch, tool, args, root, field, path):
+    ids, results = await _walk(monkeypatch, tool, args, root, field, path, _big_records(35), {"page": 1, "pageSize": 10})
+    assert ids == list(range(35))
+    assert any(r.get("truncated") for r in results)
+    for r in results:
+        if r.get("truncated"):
+            assert "retry_page_size" not in r and r["next_offset"] == r["offset"] + len(r[field])
+    assert results[-1]["next_offset"] is None
+
+
+@pytest.mark.parametrize("tool,args,root,field,path", PAGED_TOOLS)
+async def test_cut_pages_walked_from_a_later_page(monkeypatch, tool, args, root, field, path):
+    ids, _ = await _walk(monkeypatch, tool, args, root, field, path, _big_records(35), {"page": 3, "pageSize": 10})
+    assert ids == list(range(20, 35))
+
+
+@pytest.mark.parametrize("tool,args,root,field,path", PAGED_TOOLS)
+@pytest.mark.parametrize(
+    "offset,page_sent,expected",
+    [(13, 2, list(range(13, 20))), (10, 2, list(range(10, 20))), (0, 1, list(range(10))), (24, 3, [24])],
+)
+async def test_offset_reads_the_page_that_holds_it(monkeypatch, tool, args, root, field, path, offset, page_sent, expected):
+    rec = _paged_recorder(root, field, path, _small_records(25))
+    result = await _call(monkeypatch, rec, tool, {**args, "pageSize": 10, "offset": offset})
+    assert _list_info(rec, path)["page"] == page_sent and _list_info(rec, path)["pageSize"] == 10
+    assert [r["id"] for r in result[field]] == expected
+    assert result["offset"] == offset
+    assert result["next_offset"] == (offset + len(expected) if offset + len(expected) < 25 else None)
+
+
+@pytest.mark.parametrize("tool,args,root,field,path", PAGED_TOOLS)
+async def test_offset_with_default_page_size(monkeypatch, tool, args, root, field, path):
+    rec = _paged_recorder(root, field, path, _small_records(120))
+    result = await _call(monkeypatch, rec, tool, {**args, "offset": 75})
+    assert _list_info(rec, path)["page"] == 2 and _list_info(rec, path)["pageSize"] == 50
+    assert [r["id"] for r in result[field]] == list(range(75, 100)) and result["next_offset"] == 100
+
+
+@pytest.mark.parametrize("tool,args,root,field,path", PAGED_TOOLS)
+async def test_offset_past_the_end(monkeypatch, tool, args, root, field, path):
+    rec = _paged_recorder(root, field, path, _small_records(25))
+    result = await _call(monkeypatch, rec, tool, {**args, "pageSize": 10, "offset": 40})
+    assert result[field] == [] and not result["listInfo"]["hasMore"]
+    assert result["next_offset"] is None
+
+
+@pytest.mark.parametrize("tool,args,root,field,path", PAGED_TOOLS)
+async def test_offset_wins_over_page(monkeypatch, tool, args, root, field, path):
+    rec = _paged_recorder(root, field, path, _small_records(25))
+    result = await _call(monkeypatch, rec, tool, {**args, "page": 1, "pageSize": 10, "offset": 15})
+    assert _list_info(rec, path)["page"] == 2
+    assert [r["id"] for r in result[field]] == list(range(15, 20))
+
+
+async def test_offset_with_max_as_page_size(monkeypatch):
+    root, field, path = "getAssetSoftwareList", "assetSoftwares", ("input", "listInfo")
+    rec = _paged_recorder(root, field, path, _small_records(60))
+    result = await _call(monkeypatch, rec, "superops_assets_software", {"assetId": "a1", "max": 20, "offset": 45})
+    assert _list_info(rec, path)["page"] == 3 and _list_info(rec, path)["pageSize"] == 20
+    assert [r["id"] for r in result[field]] == list(range(45, 60)) and result["next_offset"] is None
+
+
+@pytest.mark.parametrize("tool,args,root,field,path", PAGED_TOOLS)
+@pytest.mark.parametrize("paging", [{}, {"page": 2}, {"page": 2, "pageSize": 10}])
+async def test_page_only_call_is_unchanged(monkeypatch, tool, args, root, field, path, paging):
+    rec = _paged_recorder(root, field, path, _small_records(125))
+    result = await _call(monkeypatch, rec, tool, {**args, **paging})
+    listing = _list_info(rec, path)
+    size, number = paging.get("pageSize", 50), paging.get("page", 1)
+    assert {k: listing[k] for k in ("page", "pageSize")} == {"page": number, "pageSize": size}
+    assert set(listing) <= {"page", "pageSize", "condition", "sort"}
+    assert [r["id"] for r in result[field]] == list(range((number - 1) * size, min(number * size, 125)))
+    assert result["listInfo"] == {"page": number, "pageSize": size, "totalCount": 125, "hasMore": True}

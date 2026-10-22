@@ -25,11 +25,14 @@ from ._common import (
     ClientFactory,
     Cursor,
     Max,
+    Offset,
     Page,
     PageSize,
     clause,
     join,
     list_input,
+    locate,
+    page_result,
     paging,
     run_tool,
     text,
@@ -108,6 +111,7 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         page: Page = None,
         pageSize: PageSize = None,
         max: Max = None,
+        offset: Offset = None,
     ) -> str:
         """Search client accounts by part of their name or email domain."""
 
@@ -115,8 +119,8 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
             term = text(query)
             if not term:
                 raise ValueError("query must not be blank.")
-            page_no, page_size = paging(page, pageSize, None, max)
-            data = await client.query(CLIENT_LIST, {"input": list_input(page_no, page_size, name_or_domain(term), BY_NAME)})
-            return data.get("getClientList")
+            number, size, start = locate(offset, *paging(page, pageSize, None, max))
+            data = await client.query(CLIENT_LIST, {"input": list_input(number, size, name_or_domain(term), BY_NAME)})
+            return page_result(data.get("getClientList"), "clients", number, size, start)
 
         return await run_tool("superops_clients_search", client_factory, action)

@@ -48,6 +48,10 @@ Page = Annotated[int | None, Field(description="Page number from 1 (default 1)."
 PageSize = Annotated[
     int | None, Field(description=f"Results per page (default {DEFAULT_PAGE_SIZE}, max {MAX_PAGE_SIZE}).", ge=1, le=MAX_PAGE_SIZE)
 ]
+Offset = Annotated[
+    int | None,
+    Field(description="Record position to start from (0-based, overrides page); pass next_offset from the previous result.", ge=0),
+]
 # Older clients page with max + cursor; both map onto page / pageSize.
 Max = Annotated[
     int | None, Field(description=f"Maximum results; alias of pageSize (values above {MAX_PAGE_SIZE} are capped).", ge=1, le=500)
@@ -78,6 +82,43 @@ def join(operator: str, clauses: list[dict | None]) -> dict | None:
 
 def list_input(page: int | None, page_size: int | None, condition: dict | None = None, sort: list[dict] | None = None) -> dict:
     return compact({"page": page or 1, "pageSize": page_size or DEFAULT_PAGE_SIZE, "condition": condition, "sort": sort})
+
+
+def locate(offset: int | None, page: int | None, page_size: int | None) -> tuple[int, int, int]:
+    """(page, pageSize, start) for a read from record ``start``.
+
+    SuperOps pages by number only, so a position is reached by asking for the page that
+    holds it (same page size) and skipping the records before it. Without an offset this is
+    the page / pageSize ``list_input`` sends anyway.
+    """
+    size = page_size or DEFAULT_PAGE_SIZE
+    start = offset if offset is not None else ((page or 1) - 1) * size
+    return start // size + 1, size, start
+
+
+def page_result(result: Any, key: str, number: int, size: int, start: int) -> Any:
+    """``result[key]`` from record ``start`` of page ``number``, plus ``offset`` / ``next_offset``.
+
+    listInfo is kept as SuperOps returned it. next_offset continues right after the last record
+    returned, also when the result is cut to fit the size limit (a page number cannot: the rest
+    of a cut page is not on any other page).
+    """
+    if not isinstance(result, dict) or not isinstance(result.get(key), list):
+        return result
+    first = (number - 1) * size
+    items = result[key]
+    info = result.get("listInfo") if isinstance(result.get("listInfo"), dict) else {}
+    total = info.get("totalCount")
+    # hasMore is null (not false) on the last page.
+    more = info.get("hasMore") is True or (isinstance(total, int) and first + len(items) < total)
+    kept = items[start - first :]
+    return {
+        **result,
+        key: kept,
+        "offset": start,
+        "next_offset": start + len(kept) if more else None,
+        "_resume": {"key": "next_offset", "start": start},
+    }
 
 
 def text(value: str | None) -> str | None:
