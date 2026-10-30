@@ -1,0 +1,68 @@
+[
+  {
+    "id": "TC1",
+    "ac": "AC1",
+    "text": "Given valid SuperOps headers, when the agent calls superops_navigate(domain=\"automation\"), then the response names the four new automation tools and a summary, with no upstream SuperOps API call made.",
+    "type": "auto",
+    "tests": ["tests/test_tools.py::test_navigate_describes_automation_domain"]
+  },
+  {
+    "id": "TC2",
+    "ac": "AC2",
+    "text": "Given a mocked multi-page scripts response, when the agent calls superops_automation_scripts_list(), then the first page is returned with the standard listInfo/offset/next_offset shape used by every other list tool.",
+    "type": "auto",
+    "tests": ["tests/test_tools.py::test_automation_scripts_list_pages_like_other_lists"]
+  },
+  {
+    "id": "TC3",
+    "ac": "AC2",
+    "text": "Given a scriptType filter, when the agent calls superops_automation_scripts_list(scriptType=\"...\"), then only scripts of that type are returned (mocked upstream).",
+    "type": "auto",
+    "tests": ["tests/test_tools.py::test_automation_scripts_list_filters_by_type"]
+  },
+  {
+    "id": "TC4",
+    "ac": "AC3",
+    "text": "Given an existing scriptId and assetId, when the agent calls superops_automation_scripts_run, then the mocked dispatch succeeds and a run reference is returned.",
+    "type": "auto",
+    "tests": ["tests/test_tools.py::test_automation_scripts_run_dispatches_on_valid_ids"]
+  },
+  {
+    "id": "TC5",
+    "ac": "AC4",
+    "text": "Given a missing scriptId or assetId, when the agent calls superops_automation_scripts_run, then the call fails with invalid_argument and the mocked client records no mutation call.",
+    "type": "auto",
+    "tests": ["tests/test_tools.py::test_automation_scripts_run_rejects_missing_ids"]
+  },
+  {
+    "id": "TC6",
+    "ac": "AC5",
+    "text": "Given no assetId, when the agent calls superops_automation_alerts_list(), then the tenant-wide alert query is used; given an assetId, the asset-scoped alert query is used instead (asserted on which mocked GraphQL document was sent).",
+    "type": "auto",
+    "tests": [
+      "tests/test_tools.py::test_automation_alerts_list_tenant_wide",
+      "tests/test_tools.py::test_automation_alerts_list_scoped_to_asset"
+    ]
+  },
+  {
+    "id": "TC7",
+    "ac": "AC6",
+    "text": "Given one or more alert ids, when the agent calls superops_automation_alerts_resolve, then those ids come back resolved; calling it again on an already-resolved id is a no-op, not an error.",
+    "type": "auto",
+    "tests": ["tests/test_tools.py::test_automation_alerts_resolve_is_idempotent"]
+  },
+  {
+    "id": "TC8",
+    "ac": "AC7",
+    "text": "Given a request to any automation tool without the SuperOps headers, then HTTP 401 names the missing header(s) before any tool code runs; given two different tenants' credentials, each tenant only ever sees its own scripts/alerts/assets.",
+    "type": "manual",
+    "steps": [
+      "Run the server locally (uv run python -m superops_mcp).",
+      "POST /mcp tools/call for superops_automation_scripts_list and superops_automation_alerts_list without X-SuperOps-API-Token / X-SuperOps-Subdomain.",
+      "Repeat with valid headers for tenant A, then valid headers for tenant B (needs a real vendor account per references/mcp-track.md §3 — not a blocker if unavailable at dev time)."
+    ],
+    "expect": "No-header calls return HTTP 401 naming the missing header(s), matching the existing tools' behavior. Tenant A's and tenant B's results never mix (each call's results pertain only to the subdomain in that call's headers).",
+    "result": "untested",
+    "evidence": "pending dev-leg execution; needs a running server and (for the two-tenant half) real vendor credentials per references/mcp-track.md §3 (no vendor account is not a blocker, per the same reference)"
+  }
+]
