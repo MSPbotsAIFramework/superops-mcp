@@ -478,6 +478,8 @@ async def test_asset_patches_status_alias(monkeypatch):
         ("superops_assets_list", {"max": 20}, ("input",)),
         ("superops_tickets_list", {"max": 20}, ("input",)),
         ("superops_technicians_list", {"max": 20}, ("input",)),
+        ("superops_automation_scripts_list", {"max": 20}, ("input",)),
+        ("superops_automation_alerts_list", {"max": 20}, ("input",)),
     ],
 )
 async def test_max_is_page_size(monkeypatch, tool, args, path):
@@ -546,6 +548,8 @@ PAGED_TOOLS = [
     ("superops_tickets_list", {}, "getTicketList", "tickets", ("input",)),
     ("superops_assets_list", {}, "getAssetList", "assets", ("input",)),
     ("superops_technicians_list", {}, "getTechnicianList", "userList", ("input",)),
+    ("superops_automation_scripts_list", {}, "getScriptList", "scripts", ("input",)),
+    ("superops_automation_alerts_list", {}, "getAlertList", "alerts", ("input",)),
 ]
 
 
@@ -677,3 +681,107 @@ async def test_cursor_alias_still_reads_that_page(monkeypatch, tool, args, root,
     result = await _call(monkeypatch, rec, tool, {**args, "cursor": "2", "pageSize": 25})
     assert (_list_info(rec, path)["page"], _list_info(rec, path)["pageSize"]) == (2, 25)
     assert [r["id"] for r in result[field]] == list(range(25, 50)) and result["next_offset"] == 50
+
+
+# ---- automation (PRD-21205) --------------------------------------------------
+#
+# The pagination shape itself (listInfo / offset / next_offset, page vs cursor vs max, the cut-page
+# walk) is already exercised for superops_automation_scripts_list and superops_automation_alerts_list
+# through PAGED_TOOLS above (TC2, AC2) -- the tests below cover what is specific to this module:
+# the scriptType filter choosing a different GraphQL document (TC3), the write tool's id validation
+# and dispatch (TC4, TC5, AC3/AC4), and the tenant-wide vs. asset-scoped alert query choice plus the
+# idempotent resolve mutation (TC6, TC7, AC5/AC6). TC1 (superops_navigate) is in test_tools.py next
+# to the other no-credentials-needed navigate test; TC8 (401 without headers, per-tenant isolation)
+# is architecture-level and already covered for every tool, automation included, by
+# test_middleware.py's test_missing_credentials_return_401 and test_concurrent_requests_do_not_share_credentials
+# -- the new tools run through the same client_factory / run_tool path as every existing tool, so
+# there is no new code path for those to miss. The two-tenant check against a real SuperOps tenant
+# stays manual (docs/tickets/PRD-21205.ac.json TC8), per references/mcp-track.md SS3 ("no vendor test
+# account is not a blocker").
+
+
+async def test_automation_scripts_list_filters_by_type(monkeypatch):
+    rec = Recorder(
+        {
+            "getScriptListByType": {
+                "getScriptListByType": {
+                    "scripts": [{"id": "s2", "name": "Clear temp files", "type": "Powershell", "description": "Clears %TEMP%"}],
+                    "listInfo": {"page": 1, "pageSize": 50, "totalCount": 1, "hasMore": None},
+                }
+            }
+        }
+    )
+    result = await _call(monkeypatch, rec, "superops_automation_scripts_list", {"scriptType": "Powershell"})
+    assert [s["type"] for s in result["scripts"]] == ["Powershell"]
+    assert rec.variables()["input"] == {"scriptType": "Powershell", "listInfo": {"page": 1, "pageSize": 50}}
+    # No scriptType given -> the unfiltered document, not the by-type one.
+    rec2 = Recorder({"getScriptList": {"getScriptList": {"scripts": [], "listInfo": {"page": 1, "pageSize": 50, "totalCount": 0, "hasMore": None}}}})
+    await _call(monkeypatch, rec2, "superops_automation_scripts_list", {})
+    assert "getScriptList" in json.loads(rec2.requests[0].content)["query"]
+    assert "getScriptListByType" not in json.loads(rec2.requests[0].content)["query"]
+
+
+async def test_automation_scripts_run_dispatches_on_valid_ids(monkeypatch):
+    rec = Recorder({"runScriptOnAsset": {"runScriptOnAsset": {"runId": "r1", "status": "QUEUED"}}})
+    result = await _call(monkeypatch, rec, "superops_automation_scripts_run", {"scriptId": "sc1", "assetId": "a1"})
+    assert result == {"runId": "r1", "status": "QUEUED"}
+    assert rec.variables()["input"] == {"scriptId": "sc1", "assetId": "a1"}
+
+
+@pytest.mark.parametrize("args", [{"scriptId": "  ", "assetId": "a1"}, {"scriptId": "sc1", "assetId": " "}])
+async def test_automation_scripts_run_rejects_missing_ids(monkeypatch, args):
+    rec = Recorder()
+    result = await _call(monkeypatch, rec, "superops_automation_scripts_run", args)
+    assert result["error"]["code"] == "invalid_argument"
+    assert rec.requests == []
+
+
+async def test_automation_alerts_list_tenant_wide(monkeypatch):
+    rec = Recorder(
+        {"getAlertList": {"getAlertList": {"alerts": [{"id": "al1"}], "listInfo": {"page": 1, "pageSize": 50, "totalCount": 1, "hasMore": None}}}}
+    )
+    result = await _call(monkeypatch, rec, "superops_automation_alerts_list", {})
+    assert "getAlertList" in json.loads(rec.requests[0].content)["query"]
+    assert rec.variables()["input"] == {"page": 1, "pageSize": 50}
+    assert [a["id"] for a in result["alerts"]] == ["al1"]
+
+
+async def test_automation_alerts_list_scoped_to_asset(monkeypatch):
+    rec = Recorder(
+        {
+            "getAlertsForAsset": {
+                "getAlertsForAsset": {"alerts": [{"id": "al2"}], "listInfo": {"page": 1, "pageSize": 50, "totalCount": 1, "hasMore": None}}
+            }
+        }
+    )
+    result = await _call(monkeypatch, rec, "superops_automation_alerts_list", {"assetId": "a1", "status": "Open"})
+    assert "getAlertsForAsset" in json.loads(rec.requests[0].content)["query"]
+    assert rec.variables()["input"] == {
+        "assetId": "a1",
+        "listInfo": {"page": 1, "pageSize": 50, "condition": {"attribute": "status", "operator": "includes", "value": ["Open"]}},
+    }
+    assert [a["id"] for a in result["alerts"]] == ["al2"]
+
+
+async def test_automation_alerts_resolve_is_idempotent(monkeypatch):
+    rec = Recorder({"resolveAlerts": {"resolveAlerts": True}})
+    result = await _call(monkeypatch, rec, "superops_automation_alerts_resolve", {"alertIds": ["al1", "al2"]})
+    assert result == {"alertIds": ["al1", "al2"], "resolved": True}
+    assert rec.variables(0)["input"] == {"alertIds": ["al1", "al2"]}
+    # Calling it again on an already-resolved id: SuperOps returns the same confirming boolean
+    # regardless of prior state, so this is a second success, not an error.
+    again = await _call(monkeypatch, rec, "superops_automation_alerts_resolve", {"alertIds": ["al1"]})
+    assert again == {"alertIds": ["al1"], "resolved": True}
+
+
+async def test_automation_alerts_resolve_rejects_blank_ids(monkeypatch):
+    rec = Recorder()
+    result = await _call(monkeypatch, rec, "superops_automation_alerts_resolve", {"alertIds": ["  ", ""]})
+    assert result["error"]["code"] == "invalid_argument"
+    assert rec.requests == []
+
+
+async def test_automation_alerts_resolve_reports_when_superops_does_not_confirm(monkeypatch):
+    rec = Recorder({"resolveAlerts": {"resolveAlerts": False}})
+    result = await _call(monkeypatch, rec, "superops_automation_alerts_resolve", {"alertIds": ["al1"]})
+    assert result["error"]["code"] == "upstream_error"

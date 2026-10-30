@@ -159,9 +159,9 @@ def create_mcp_server(settings: Settings | None = None) -> FastMCP:
 
     client_factory: Callable[[], SuperOpsClient | None] = get_client_from_context
 
-    from .tools import assets, clients, custom, navigation, technicians, tickets
+    from .tools import assets, automation, clients, custom, navigation, technicians, tickets
 
-    for module in (navigation, clients, tickets, assets, technicians, custom):
+    for module in (navigation, clients, tickets, assets, technicians, automation, custom):
         module.register(mcp, client_factory)
 
     return mcp
