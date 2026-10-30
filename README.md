@@ -121,7 +121,7 @@ response only the records that fit are returned, and `next_offset` continues rig
 
 | Tool | Purpose | Parameters (required in **bold**) |
 |---|---|---|
-| `superops_navigate` | Describe the tools of one area (changes nothing) | **domain** (`clients`, `tickets`, `assets`, `technicians`, `custom`) |
+| `superops_navigate` | Describe the tools of one area (changes nothing) | **domain** (`clients`, `tickets`, `assets`, `technicians`, `automation`, `custom`) |
 | `superops_status` | Show the tenant and region this connection targets (no API call) | - |
 | `superops_test_connection` | Test the token and subdomain; returns the tenant's client count | - |
 | `superops_clients_list` | List client accounts, optionally by stage and status | status, stage, page, pageSize, max, cursor, offset |
@@ -141,6 +141,10 @@ response only the records that fit are returned, and `next_offset` continues rig
 | `superops_technicians_get` | Get one technician | **technicianId** |
 | `superops_technicians_groups` | List technician groups | max |
 | `superops_technicians_lookups` | Roles, teams, designations, business functions and groups with ids | - |
+| `superops_automation_scripts_list` | List scripts available to run on a managed asset, optionally by type | scriptType, page, pageSize, max, cursor, offset |
+| `superops_automation_scripts_run` | Run a script on a managed asset (**write**) | **scriptId**, **assetId** |
+| `superops_automation_alerts_list` | List alerts, tenant-wide or scoped to one asset | assetId, status, severity, page, pageSize, max, cursor, offset |
+| `superops_automation_alerts_resolve` | Mark one or more alerts resolved (**write**) | **alertIds** |
 | `superops_custom_query` | Run a read-only GraphQL query | query (required at run time), variables |
 | `superops_custom_mutation` | Run a GraphQL mutation (**write**) | **mutation**, variables |
 
