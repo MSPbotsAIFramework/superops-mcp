@@ -27,6 +27,10 @@ from superops_mcp.server import INSTRUCTIONS, create_mcp_server
 # depend on them. Changing this snapshot is a breaking change.
 EXPECTED_TOOLS: dict[str, set[str]] = {
     "superops_navigate": {"domain"},
+    "superops_automation_scripts_list": set(),
+    "superops_automation_scripts_run": {"scriptId", "assetId"},
+    "superops_automation_alerts_list": set(),
+    "superops_automation_alerts_resolve": {"alertIds"},
     "superops_status": set(),
     "superops_test_connection": set(),
     "superops_clients_list": set(),
@@ -56,7 +60,13 @@ WRITE_TOOLS = {
     "superops_tickets_add_note",
     "superops_tickets_log_time",
     "superops_custom_mutation",
+    "superops_automation_scripts_run",
+    "superops_automation_alerts_resolve",
 }
+
+# Destructive-capable (annotations.destructiveHint): a mutation that can run arbitrary vendor-side
+# commands or logic, not just change one record the agent named explicitly.
+DESTRUCTIVE_TOOLS = {"superops_custom_mutation", "superops_automation_scripts_run"}
 
 
 @pytest.fixture(scope="module")
@@ -86,7 +96,7 @@ def test_annotations_match_side_effects(tools, name):
     annotations = tools[name].annotations
     assert annotations is not None
     assert annotations.readOnlyHint is (name not in WRITE_TOOLS)
-    assert bool(annotations.destructiveHint) is (name == "superops_custom_mutation")
+    assert bool(annotations.destructiveHint) is (name in DESTRUCTIVE_TOOLS)
 
 
 @pytest.mark.parametrize("name", sorted(WRITE_TOOLS))
@@ -99,7 +109,7 @@ def test_page_size_is_capped(tools):
     assert next(a["maximum"] for a in schema["anyOf"] if "maximum" in a) == 100
 
 
-@pytest.mark.parametrize("module", ["navigation", "clients", "tickets", "assets", "technicians"])
+@pytest.mark.parametrize("module", ["navigation", "clients", "tickets", "assets", "technicians", "automation"])
 def test_graphql_documents_parse(module):
     mod = importlib.import_module(f"superops_mcp.tools.{module}")
     documents = [v for v in vars(mod).values() if isinstance(v, str) and v.lstrip().startswith(("query", "mutation"))]
@@ -152,3 +162,17 @@ def test_tool_without_credentials_returns_not_configured():
 def test_navigate_needs_no_credentials():
     content, _ = asyncio.run(create_mcp_server().call_tool("superops_navigate", {"domain": "custom"}))
     assert json.loads(content[0].text)["tools"] == ["superops_custom_query", "superops_custom_mutation"]
+
+
+def test_navigate_describes_automation_domain():
+    """TC1 (AC1, PRD-21205): superops_navigate(domain="automation") names the four new tools,
+    with no upstream call (navigate needs no credentials, same as every other domain)."""
+    content, _ = asyncio.run(create_mcp_server().call_tool("superops_navigate", {"domain": "automation"}))
+    body = json.loads(content[0].text)
+    assert body["tools"] == [
+        "superops_automation_scripts_list",
+        "superops_automation_scripts_run",
+        "superops_automation_alerts_list",
+        "superops_automation_alerts_resolve",
+    ]
+    assert body["summary"]

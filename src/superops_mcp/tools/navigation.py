@@ -51,6 +51,15 @@ DOMAINS: dict[str, tuple[str, list[str]]] = {
             "superops_technicians_lookups",
         ],
     ),
+    "automation": (
+        "Scripts that can run on a managed asset, and alerts: list, run a script, list and resolve alerts.",
+        [
+            "superops_automation_scripts_list",
+            "superops_automation_scripts_run",
+            "superops_automation_alerts_list",
+            "superops_automation_alerts_resolve",
+        ],
+    ),
     "custom": (
         "Raw GraphQL: read-only queries, and mutations for writes no other tool covers.",
         ["superops_custom_query", "superops_custom_mutation"],
@@ -64,7 +73,8 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
     @mcp.tool(annotations=LOCAL)
     async def superops_navigate(
         domain: Annotated[
-            Literal["clients", "tickets", "assets", "technicians", "custom"], Field(description="Area to describe.")
+            Literal["clients", "tickets", "assets", "technicians", "automation", "custom"],
+            Field(description="Area to describe."),
         ],
     ) -> str:
         """Describe the tools of one SuperOps area. All tools are already callable; this changes nothing."""
