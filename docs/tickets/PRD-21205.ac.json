@@ -4,35 +4,50 @@
     "ac": "AC1",
     "text": "Given valid SuperOps headers, when the agent calls superops_navigate(domain=\"automation\"), then the response names the four new automation tools and a summary, with no upstream SuperOps API call made.",
     "type": "auto",
-    "tests": ["tests/test_tools.py::test_navigate_describes_automation_domain"]
+    "tests": ["tests/test_tools.py::test_navigate_describes_automation_domain"],
+    "result": "pass",
+    "evidence": "uv run pytest tests/test_tools.py::test_navigate_describes_automation_domain -> 1 passed. Also exercised over HTTP with placeholder headers (uv run python -m superops_mcp; POST /mcp tools/list): response lists superops_automation_scripts_list, superops_automation_scripts_run, superops_automation_alerts_list, superops_automation_alerts_resolve among 26 total tools."
   },
   {
     "id": "TC2",
     "ac": "AC2",
     "text": "Given a mocked multi-page scripts response, when the agent calls superops_automation_scripts_list(), then the first page is returned with the standard listInfo/offset/next_offset shape used by every other list tool.",
     "type": "auto",
-    "tests": ["tests/test_tools.py::test_automation_scripts_list_pages_like_other_lists"]
+    "tests": [
+      "tests/test_api_client.py::test_cut_pages_walked_by_next_offset_return_every_record_once[superops_automation_scripts_list-...]",
+      "tests/test_api_client.py::test_offset_reads_the_page_that_holds_it[superops_automation_scripts_list-...]",
+      "tests/test_api_client.py::test_page_only_call_is_unchanged[superops_automation_scripts_list-...]",
+      "tests/test_api_client.py::test_max_is_page_size[superops_automation_scripts_list-...]"
+    ],
+    "result": "pass",
+    "evidence": "Deviates from the design's named test location (tests/test_tools.py, which is a tools/list schema snapshot file with no mocked-upstream calls): the repo's actual mocked-business-logic pattern is test_api_client.py's Recorder/_call helpers, so that is where these run. superops_automation_scripts_list was added to PAGED_TOOLS in tests/test_api_client.py, giving it the same cut-page/offset/cursor/max parametrized battery as every existing list tool. `uv run pytest -q -k \"automation_scripts_list or automation_alerts_list\"` -> 37 passed."
   },
   {
     "id": "TC3",
     "ac": "AC2",
     "text": "Given a scriptType filter, when the agent calls superops_automation_scripts_list(scriptType=\"...\"), then only scripts of that type are returned (mocked upstream).",
     "type": "auto",
-    "tests": ["tests/test_tools.py::test_automation_scripts_list_filters_by_type"]
+    "tests": ["tests/test_api_client.py::test_automation_scripts_list_filters_by_type"],
+    "result": "pass",
+    "evidence": "uv run pytest tests/test_api_client.py::test_automation_scripts_list_filters_by_type -> 1 passed. Asserts the scriptType path sends getScriptListByType with {scriptType, listInfo}, and the no-filter path sends getScriptList (not getScriptListByType)."
   },
   {
     "id": "TC4",
     "ac": "AC3",
     "text": "Given an existing scriptId and assetId, when the agent calls superops_automation_scripts_run, then the mocked dispatch succeeds and a run reference is returned.",
     "type": "auto",
-    "tests": ["tests/test_tools.py::test_automation_scripts_run_dispatches_on_valid_ids"]
+    "tests": ["tests/test_api_client.py::test_automation_scripts_run_dispatches_on_valid_ids"],
+    "result": "pass",
+    "evidence": "uv run pytest tests/test_api_client.py::test_automation_scripts_run_dispatches_on_valid_ids -> 1 passed."
   },
   {
     "id": "TC5",
     "ac": "AC4",
     "text": "Given a missing scriptId or assetId, when the agent calls superops_automation_scripts_run, then the call fails with invalid_argument and the mocked client records no mutation call.",
     "type": "auto",
-    "tests": ["tests/test_tools.py::test_automation_scripts_run_rejects_missing_ids"]
+    "tests": ["tests/test_api_client.py::test_automation_scripts_run_rejects_missing_ids"],
+    "result": "pass",
+    "evidence": "uv run pytest tests/test_api_client.py::test_automation_scripts_run_rejects_missing_ids -> 2 passed (blank scriptId, blank assetId). Covers the 'missing' half of AC4 (blank/omitted id, rejected before any upstream call). The 'unknown' half (an id that does not exist in the tenant) depends on how SuperOps's live GraphQL API reports that -- not independently verified without a real vendor account (see docs/tickets/PRD-21205.md Open questions); any upstream 400 for that case already maps to invalid_argument through the existing, unchanged api_client.py error mapping, so no new code path is needed, but this half is not separately exercised here."
   },
   {
     "id": "TC6",
@@ -40,16 +55,24 @@
     "text": "Given no assetId, when the agent calls superops_automation_alerts_list(), then the tenant-wide alert query is used; given an assetId, the asset-scoped alert query is used instead (asserted on which mocked GraphQL document was sent).",
     "type": "auto",
     "tests": [
-      "tests/test_tools.py::test_automation_alerts_list_tenant_wide",
-      "tests/test_tools.py::test_automation_alerts_list_scoped_to_asset"
-    ]
+      "tests/test_api_client.py::test_automation_alerts_list_tenant_wide",
+      "tests/test_api_client.py::test_automation_alerts_list_scoped_to_asset"
+    ],
+    "result": "pass",
+    "evidence": "uv run pytest tests/test_api_client.py::test_automation_alerts_list_tenant_wide tests/test_api_client.py::test_automation_alerts_list_scoped_to_asset -> 2 passed. Each asserts which GraphQL document text (getAlertList vs getAlertsForAsset) was actually sent."
   },
   {
     "id": "TC7",
     "ac": "AC6",
-    "text": "Given one or more alert ids, when the agent calls superops_automation_alerts_resolve, then those ids come back resolved; calling it again on an already-resolved id is a no-op, not an error.",
+    "text": "Given one or more alert ids, when the agent calls superops_automation_alerts_resolve, then those ids come back resolved; calling it again on an already-resolved id does not error (idempotent).",
     "type": "auto",
-    "tests": ["tests/test_tools.py::test_automation_alerts_resolve_is_idempotent"]
+    "tests": [
+      "tests/test_api_client.py::test_automation_alerts_resolve_is_idempotent",
+      "tests/test_api_client.py::test_automation_alerts_resolve_rejects_blank_ids",
+      "tests/test_api_client.py::test_automation_alerts_resolve_reports_when_superops_does_not_confirm"
+    ],
+    "result": "pass",
+    "evidence": "uv run pytest tests/test_api_client.py::test_automation_alerts_resolve_is_idempotent tests/test_api_client.py::test_automation_alerts_resolve_rejects_blank_ids tests/test_api_client.py::test_automation_alerts_resolve_reports_when_superops_does_not_confirm -> 3 passed. Deviation from design: SuperOps's public reference confirms resolveAlerts returns a plain Boolean, not the resolved ids (design assumed the latter) -- the tool now returns the ids it was given once the boolean confirms success, and treats a false/falsy confirmation as an upstream_error (second test added, not in the original ac.json)."
   },
   {
     "id": "TC8",
@@ -63,6 +86,6 @@
     ],
     "expect": "No-header calls return HTTP 401 naming the missing header(s), matching the existing tools' behavior. Tenant A's and tenant B's results never mix (each call's results pertain only to the subdomain in that call's headers).",
     "result": "untested",
-    "evidence": "pending dev-leg execution; needs a running server and (for the two-tenant half) real vendor credentials per references/mcp-track.md §3 (no vendor account is not a blocker, per the same reference)"
+    "evidence": "Needs a real vendor account for the two-tenant half (not a blocker, references/mcp-track.md §3); kept as untested overall since that half of this AC is not verified. No-header half: pass, with live evidence. Ran `uv run python -m superops_mcp` locally and curled POST /mcp tools/call for superops_automation_scripts_list with no headers -> HTTP 401 {\"error\":\"Missing credentials\",\"message\":\"Missing header(s): X-SuperOps-API-Token, X-SuperOps-Subdomain\",...}; GET /health -> HTTP 200 {\"status\":\"ok\"}; tools/list with placeholder headers lists all four new tool names among 26 total. This 401 check is also structurally covered for every tool (automation included) by tests/test_middleware.py::test_missing_credentials_return_401, since the middleware rejects by path before any tool dispatch -- no new code path for the new tools to bypass it.\nTwo-tenant isolation half: untested · needs a real vendor account (two SuperOps tenants) per references/mcp-track.md §3 -- not a blocker. The new tools read credentials through the same per-request contextvar / client_factory as every existing tool (api_client.py's GatewayCredentialsMiddleware, unchanged by this ticket), which tests/test_middleware.py::test_concurrent_requests_do_not_share_credentials already exercises at the architecture level; no automation-specific cross-tenant code path was added."
   }
 ]
