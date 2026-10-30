@@ -1,5 +1,7 @@
 # PRD-21205 · Code review
 
+Status: frozen @ a386444
+
 ## Round 1 · 2026-10-30 · reviewed dev/PRD-21205 @ 39c071b (base main @ aeff9a9)
 
 Verdict: approved
